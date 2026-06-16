@@ -6,16 +6,12 @@
     <title>対応記録音声入力</title>
     <style>
         body { font-family: sans-serif; padding: 10px; background: #f0f2f5; margin: 0; }
-        #chat-box { height: 55vh; overflow-y: auto; background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ddd; }
+        #chat-box { height: 65vh; overflow-y: auto; background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ddd; }
         .msg { margin: 8px 0; padding: 10px 14px; border-radius: 15px; max-width: 85%; line-height: 1.4; word-break: break-all; }
         .user { background: #DCF8C6; margin-left: auto; text-align: left; }
         .ai { background: #EAEAEA; margin-right: auto; white-space: pre-wrap; }
-        
-        #preview-box { height: 40px; background: #fff; border: 1px dashed #06C755; padding: 5px 10px; border-radius: 5px; margin-bottom: 10px; font-size: 14px; color: #666; overflow: hidden; display: flex; align-items: center; }
-        
-        button { width: 100%; padding: 16px; font-size: 16px; border: none; border-radius: 5px; color: white; margin-bottom: 8px; font-weight: bold; cursor: pointer; user-select: none; -webkit-user-select: none; }
-        #voice-btn { background: #06C755; touch-action: none; }
-        #voice-btn.recording { background: #ff4d4d; }
+        button { width: 100%; padding: 14px; font-size: 16px; border: none; border-radius: 5px; color: white; margin-bottom: 8px; font-weight: bold; cursor: pointer; }
+        #voice-btn { background: #06C755; }
         #copy-btn { background: #333; }
     </style>
 </head>
@@ -24,86 +20,57 @@
     <div id="chat-box">
         <div class="msg ai">音声記録を開始します。今日の記録者のお名前と、対象の利用者のお名前を教えてください。</div>
     </div>
-    
-    <div id="preview-box">🎙️ ボタンを押しながら話してください...</div>
-
-    <button id="voice-btn" onmousedown="startSpeech()" onmouseup="stopSpeech()" ontouchstart="startSpeech(event)" ontouchend="stopSpeech(event)">🎤 押しながら話す</button>
+    <button id="voice-btn" onclick="toggleSpeech()">🎤 音声入力ON (待機中)</button>
     <button id="copy-btn" onclick="copyResult()">📋 まとめのコピー</button>
 
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
         // ==========================================
-        // 🛠️ あなたの環境の新しいURLとIDを貼り付けてください
+        // 🛠️ あなたの環境に合わせてここを書き換えてください
         // ==========================================
         const GAS_URL = "https://script.google.com/macros/s/AKfycbyvXc7PlbXkHiIGUy-Y_eGoYc9D8zSStgoZL2MAIIK85SvMEN3Ub-PkrWFSkLqlbJUSFA/exec"; 
         const LIFF_ID = "2010414852-QfXo4q8I";
         // ==========================================
 
         let recognition;
-        let isRecording = false;
-        let currentTranscript = '';
+        let isListening = false;
 
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
-            recognition.continuous = true; 
-            recognition.interimResults = true; 
+            recognition.continuous = false;
+            recognition.interimResults = false;
             recognition.lang = 'ja-JP';
 
             recognition.onresult = (event) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
-
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
-                    }
-                }
-                
-                currentTranscript = finalTranscript || interimTranscript;
-
-                const preview = document.getElementById('preview-box');
-                preview.innerText = currentTranscript || "聞き取り中...";
-                preview.style.color = "#000";
+                const text = event.results[0][0].transcript;
+                addMessage(text, 'user');
+                sendToGemini(text);
             };
+
+            recognition.onend = () => {
+                if (isListening) recognition.start(); 
+            };
+            
+            recognition.onerror = (event) => {
+                console.error("音声認識エラー: ", event.error);
+            };
+        } else {
+            alert("お使いのブラウザは音声認識に対応していません。別のブラウザかLINE内でお試しください。");
         }
 
-        function startSpeech(e) {
-            if (e) e.preventDefault(); 
-            if (isRecording) return;
-            isRecording = true;
-            currentTranscript = ''; 
-            
+        function toggleSpeech() {
             const btn = document.getElementById('voice-btn');
-            btn.innerText = "🛑 離すと送信（録音中...）";
-            btn.classList.add('recording');
-            
-            document.getElementById('preview-box').innerText = "マイク起動中...";
-            try { recognition.start(); } catch(err) {}
-        }
-
-        function stopSpeech(e) {
-            if (e) e.preventDefault();
-            if (!isRecording) return;
-            isRecording = false;
-
-            const btn = document.getElementById('voice-btn');
-            btn.innerText = "🎤 押しながら話す";
-            btn.classList.remove('recording');
-
-            recognition.stop();
-
-            setTimeout(() => {
-                const text = currentTranscript.trim();
-                if (text && text !== "マイク起動中..." && text !== "聞き取り中...") {
-                    addMessage(text, 'user');
-                    sendToGemini(text);
-                } else {
-                    document.getElementById('preview-box').innerText = "🎙️ ボタンを押しながら話してください...";
-                    document.getElementById('preview-box').style.color = "#666";
-                }
-            }, 300); 
+            if (!isListening) {
+                recognition.start();
+                isListening = true;
+                btn.innerText = "🛑 音声入力中...（話してください）";
+                btn.style.background = "#ff4d4d";
+            } else {
+                recognition.stop();
+                isListening = false;
+                btn.innerText = "🎤 音声入力ON (待機中)";
+                btn.style.background = "#06C755";
+            }
         }
 
         function addMessage(text, sender) {
@@ -117,37 +84,41 @@
 
         async function sendToGemini(text) {
             try {
-                // 💡 GASが最も解釈しやすい標準的な送信設定に変更
+                // 明示的にPOSTメソッドを指定し、エラーを防ぎます
                 const response = await fetch(GAS_URL, {
                     method: 'POST',
-                    mode: 'cors',
+                    method: 'POST',
                     headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'text/plain' // GASのdoPostでパースしやすい形式
                     },
                     body: JSON.stringify({ message: text })
                 });
-                
-                if (!response.ok) {
-                    throw new Error(`サーバーエラー: ${response.status}`);
-                }
-                
                 const data = await response.json();
                 addMessage(data.reply, 'ai');
             } catch (error) {
                 console.error(error);
-                addMessage("通信エラーが発生しました。新URLの設定を確認してください。", 'ai');
+                addMessage("通信エラーが発生しました。もう一度お試しください。", 'ai');
             }
         }
 
         function copyResult() {
             const messages = document.querySelectorAll('.ai');
-            if(messages.length <= 1) return alert("コピーするまとめがありません。");
+            if(messages.length <= 1) {
+                alert("コピーするまとめがまだありません。");
+                return;
+            }
             const lastMessage = messages[messages.length - 1].innerText;
-            navigator.clipboard.writeText(lastMessage).then(() => alert("コピーしました！"));
+            navigator.clipboard.writeText(lastMessage).then(() => {
+                alert("最新のメッセージをコピーしました！");
+            }).catch(err => {
+                alert("コピーに失敗しました。文字を長押しして選択してください。");
+            });
         }
 
-        liff.init({ liffId: LIFF_ID });
+        // LIFFの初期化
+        liff.init({ liffId: LIFF_ID })
+            .then(() => { console.log("LIFF初期化成功"); })
+            .catch((err) => { console.error("LIFF初期化失敗", err); });
     </script>
 </body>
 </html>
