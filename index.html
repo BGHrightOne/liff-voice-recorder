@@ -37,22 +37,43 @@
 
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
-            recognition.continuous = false;
-            recognition.interimResults = false;
+            // 💡 連続認識を有効にして、マイクが勝手に切れるのを防ぐ
+            recognition.continuous = true;
+            // 💡 認識途中の結果も取得できるようにする（話し終わりを検知するため）
+            recognition.interimResults = true;
             recognition.lang = 'ja-JP';
 
             recognition.onresult = (event) => {
-                const text = event.results[0][0].transcript;
-                addMessage(text, 'user');
-                sendToGemini(text);
+                let finalTranscript = '';
+                
+                // 新しく確定した(isFinal)テキストがあるかループで確認
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                // 確定したテキスト（ユーザーが一呼吸置いて話し終わった文章）があれば送信
+                if (finalTranscript.trim() !== '') {
+                    addMessage(finalTranscript, 'user');
+                    sendToGemini(finalTranscript);
+                }
             };
 
+            // AIの返答中などで勝手に切断された場合の自動復旧処理
             recognition.onend = () => {
-                if (isListening) recognition.start(); 
+                if (isListening) {
+                    console.log("マイクが切断されたため、自動で再開します...");
+                    recognition.start(); 
+                }
             };
             
             recognition.onerror = (event) => {
                 console.error("音声認識エラー: ", event.error);
+                // abortion（一時的な中断）以外のエラーの時は一度停止させる
+                if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                    alert("音声認識でエラーが発生しました: " + event.error);
+                }
             };
         } else {
             alert("お使いのブラウザは音声認識に対応していません。別のブラウザかLINE内でお試しください。");
@@ -66,8 +87,8 @@
                 btn.innerText = "🛑 音声入力中...（話してください）";
                 btn.style.background = "#ff4d4d";
             } else {
-                recognition.stop();
                 isListening = false;
+                recognition.stop();
                 btn.innerText = "🎤 音声入力ON (待機中)";
                 btn.style.background = "#06C755";
             }
@@ -84,12 +105,11 @@
 
         async function sendToGemini(text) {
             try {
-                // 明示的にPOSTメソッドを指定し、エラーを防ぎます
+                // 重複していたmethod指定を1つに整理
                 const response = await fetch(GAS_URL, {
                     method: 'POST',
-                    method: 'POST',
                     headers: {
-                        'Content-Type': 'text/plain' // GASのdoPostでパースしやすい形式
+                        'Content-Type': 'text/plain'
                     },
                     body: JSON.stringify({ message: text })
                 });
