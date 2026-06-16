@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>対応記録音声入力</title>
     <style>
-        body { font-family: sans-serif; padding: 10px; background: #f0f2f5; }
-        #chat-box { height: 60vh; overflow-y: auto; background: white; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
-        .msg { margin: 5px 0; padding: 8px 12px; border-radius: 15px; max-width: 80%; }
-        .user { background: #DCF8C6; margin-left: auto; text-align: right; }
-        .ai { background: #EAEAEA; margin-right: auto; }
-        button { width: 100%; padding: 12px; font-size: 16px; border: none; border-radius: 5px; background: #06C755; color: white; margin-bottom: 5px; }
+        body { font-family: sans-serif; padding: 10px; background: #f0f2f5; margin: 0; }
+        #chat-box { height: 65vh; overflow-y: auto; background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ddd; }
+        .msg { margin: 8px 0; padding: 10px 14px; border-radius: 15px; max-width: 85%; line-height: 1.4; word-break: break-all; }
+        .user { background: #DCF8C6; margin-left: auto; text-align: left; }
+        .ai { background: #EAEAEA; margin-right: auto; white-space: pre-wrap; }
+        button { width: 100%; padding: 14px; font-size: 16px; border: none; border-radius: 5px; color: white; margin-bottom: 8px; font-weight: bold; cursor: pointer; }
+        #voice-btn { background: #06C755; }
+        #copy-btn { background: #333; }
     </style>
 </head>
 <body>
@@ -19,19 +21,23 @@
         <div class="msg ai">音声記録を開始します。今日の記録者のお名前と、対象の利用者のお名前を教えてください。</div>
     </div>
     <button id="voice-btn" onclick="toggleSpeech()">🎤 音声入力ON (待機中)</button>
-    <button onclick="copyResult()">📋 まとめのコピー</button>
+    <button id="copy-btn" onclick="copyResult()">📋 まとめのコピー</button>
 
-    <!-- LINE LIFF SDK -->
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbyWt7UYkNy2oMRDCs9PJSrLrX0VnXrtzyMoCrwdLSjxXkfDv9GnLMl-JQUW-0zqpwv-WQ/exec"; // GASのWebアプリURLを入力
+        // ==========================================
+        // 🛠️ あなたの環境に合わせてここを書き換えてください
+        // ==========================================
+        const GAS_URL = "ここにあなたのGASのWebアプリURLを貼り付け"; 
+        const LIFF_ID = "ここにあなたのLIFF_IDを貼り付け";
+        // ==========================================
+
         let recognition;
         let isListening = false;
 
-        // 音声認識の初期設定
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
-            recognition.continuous = false; // 1文ごとに区切る
+            recognition.continuous = false;
             recognition.interimResults = false;
             recognition.lang = 'ja-JP';
 
@@ -42,8 +48,14 @@
             };
 
             recognition.onend = () => {
-                if (isListening) recognition.start(); // 自動で聞き取りを再開（ハンズフリー化）
+                if (isListening) recognition.start(); 
             };
+            
+            recognition.onerror = (event) => {
+                console.error("音声認識エラー: ", event.error);
+            };
+        } else {
+            alert("お使いのブラウザは音声認識に対応していません。別のブラウザかLINE内でお試しください。");
         }
 
         function toggleSpeech() {
@@ -71,25 +83,42 @@
         }
 
         async function sendToGemini(text) {
-            // GASへテキストを送信してGeminiの返答をもらう
-            const response = await fetch(GAS_URL, {
-                method: 'POST',
-                body: JSON.stringify({ message: text })
-            });
-            const data = await response.json();
-            addMessage(data.reply, 'ai');
+            try {
+                // 明示的にPOSTメソッドを指定し、エラーを防ぎます
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/plain' // GASのdoPostでパースしやすい形式
+                    },
+                    body: JSON.stringify({ message: text })
+                });
+                const data = await response.json();
+                addMessage(data.reply, 'ai');
+            } catch (error) {
+                console.error(error);
+                addMessage("通信エラーが発生しました。もう一度お試しください。", 'ai');
+            }
         }
 
         function copyResult() {
-            // 最後の「まとめ」を想定してコピーする簡易処理
             const messages = document.querySelectorAll('.ai');
+            if(messages.length <= 1) {
+                alert("コピーするまとめがまだありません。");
+                return;
+            }
             const lastMessage = messages[messages.length - 1].innerText;
-            navigator.clipboard.writeText(lastMessage);
-            alert("まとめをコピーしました！");
+            navigator.clipboard.writeText(lastMessage).then(() => {
+                alert("最新のメッセージをコピーしました！");
+            }).catch(err => {
+                alert("コピーに失敗しました。文字を長押しして選択してください。");
+            });
         }
 
         // LIFFの初期化
-        liff.init({ liffId: "YOUR_LIFF_ID" });
+        liff.init({ liffId: LIFF_ID })
+            .then(() => { console.log("LIFF初期化成功"); })
+            .catch((err) => { console.error("LIFF初期化失敗", err); });
     </script>
 </body>
 </html>
