@@ -11,11 +11,9 @@
         .user { background: #DCF8C6; margin-left: auto; text-align: left; }
         .ai { background: #EAEAEA; margin-right: auto; white-space: pre-wrap; }
         
-        /* ②入力状況フィードバック欄 */
         #preview-box { height: 40px; background: #fff; border: 1px dashed #06C755; padding: 5px 10px; border-radius: 5px; margin-bottom: 10px; font-size: 14px; color: #666; overflow: hidden; display: flex; align-items: center; }
         
         button { width: 100%; padding: 16px; font-size: 16px; border: none; border-radius: 5px; color: white; margin-bottom: 8px; font-weight: bold; cursor: pointer; user-select: none; -webkit-user-select: none; }
-        /* ①③対策：長押しボタン */
         #voice-btn { background: #06C755; touch-action: none; }
         #voice-btn.recording { background: #ff4d4d; }
         #copy-btn { background: #333; }
@@ -35,15 +33,15 @@
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
         // ==========================================
-        // 🛠️ あなたの環境に合わせて書き換えてください
+        // 🛠️ あなたの環境の新しいURLとIDを貼り付けてください
         // ==========================================
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbwxC16o7VqIFT9Zw17vgWStYSBqqjjg_AlNVBzOMua6TBKZlTmdORBROxuEKFtWKrmo2A/exec"; 
-        const LIFF_ID = "2010414852-9hJQ0CWs";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbwKfQXMPH91bxK7iBMoC15EdSffPhZe_jNX42rie-2ridB6l0VbpxaNM9EOdr31dBG_Yw/exec"; 
+        const LIFF_ID = "あなたのLIFF_ID";
         // ==========================================
 
         let recognition;
         let isRecording = false;
-        let currentTranscript = ''; // 認識中のテキストを一時保存する変数
+        let currentTranscript = '';
 
         if ('webkitSpeechRecognition' in window) {
             recognition = new webkitSpeechRecognition();
@@ -63,42 +61,28 @@
                     }
                 }
                 
-                // 現在聞き取れている文字を結合して保持
                 currentTranscript = finalTranscript || interimTranscript;
 
-                // ②画面へのリアルタイムフィードバック
                 const preview = document.getElementById('preview-box');
                 preview.innerText = currentTranscript || "聞き取り中...";
                 preview.style.color = "#000";
             };
-
-            recognition.onerror = (event) => {
-                console.error("音声認識エラー: ", event.error);
-            };
-        } else {
-            alert("お使いの環境は音声認識に対応していません。");
         }
 
-        // 押し始めたとき：マイク起動
         function startSpeech(e) {
-            if (e) e.preventDefault(); // スマホの長押しズームや選択メニューを防止
+            if (e) e.preventDefault(); 
             if (isRecording) return;
             isRecording = true;
-            currentTranscript = ''; // 文字をリセット
+            currentTranscript = ''; 
             
             const btn = document.getElementById('voice-btn');
             btn.innerText = "🛑 離すと送信（録音中...）";
             btn.classList.add('recording');
             
             document.getElementById('preview-box').innerText = "マイク起動中...";
-            try {
-                recognition.start();
-            } catch(err) {
-                console.log(err);
-            }
+            try { recognition.start(); } catch(err) {}
         }
 
-        // 離したとき：マイクを止めて確定したテキストを送信
         function stopSpeech(e) {
             if (e) e.preventDefault();
             if (!isRecording) return;
@@ -108,29 +92,18 @@
             btn.innerText = "🎤 押しながら話す";
             btn.classList.remove('recording');
 
-            // 💡 文字の取りこぼしを防ぐため、認識を止めて少し待ってから送信処理へ移る
             recognition.stop();
 
             setTimeout(() => {
                 const text = currentTranscript.trim();
-                // 意味のある文字が取得できていれば送信
                 if (text && text !== "マイク起動中..." && text !== "聞き取り中...") {
                     addMessage(text, 'user');
                     sendToGemini(text);
                 } else {
-                    document.getElementById('preview-box').innerText = "⚠️ 上手く聞き取れませんでした。もう一度長押ししてください。";
-                    document.getElementById('preview-box').style.color = "#ff4d4d";
-                    return;
+                    document.getElementById('preview-box').innerText = "🎙️ ボタンを押しながら話してください...";
+                    document.getElementById('preview-box').style.color = "#666";
                 }
-                
-                // 送信完了後に表示を戻す
-                setTimeout(() => {
-                    if (!isRecording) {
-                        document.getElementById('preview-box').innerText = "🎙️ ボタンを押しながら話してください...";
-                        document.getElementById('preview-box').style.color = "#666";
-                    }
-                }, 1500);
-            }, 400); // 0.4秒のバッファを設けて音声の確定を待ちます
+            }, 300); 
         }
 
         function addMessage(text, sender) {
@@ -144,9 +117,14 @@
 
         async function sendToGemini(text) {
             try {
+                // 💡 GASが最も解釈しやすい標準的な送信設定に変更
                 const response = await fetch(GAS_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({ message: text })
                 });
                 
@@ -158,7 +136,7 @@
                 addMessage(data.reply, 'ai');
             } catch (error) {
                 console.error(error);
-                addMessage("通信エラーが発生しました。GASのURLが正しいか確認してください。", 'ai');
+                addMessage("通信エラーが発生しました。新URLの設定を確認してください。", 'ai');
             }
         }
 
