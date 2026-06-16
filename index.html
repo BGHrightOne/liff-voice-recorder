@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>対応記録音声入力</title>
+    <style>
+        body { font-family: sans-serif; padding: 10px; background: #f0f2f5; }
+        #chat-box { height: 60vh; overflow-y: auto; background: white; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+        .msg { margin: 5px 0; padding: 8px 12px; border-radius: 15px; max-width: 80%; }
+        .user { background: #DCF8C6; margin-left: auto; text-align: right; }
+        .ai { background: #EAEAEA; margin-right: auto; }
+        button { width: 100%; padding: 12px; font-size: 16px; border: none; border-radius: 5px; background: #06C755; color: white; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="chat-box">
+        <div class="msg ai">音声記録を開始します。今日の記録者のお名前と、対象の利用者のお名前を教えてください。</div>
+    </div>
+    <button id="voice-btn" onclick="toggleSpeech()">🎤 音声入力ON (待機中)</button>
+    <button onclick="copyResult()">📋 まとめのコピー</button>
+
+    <!-- LINE LIFF SDK -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script>
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbyWt7UYkNy2oMRDCs9PJSrLrX0VnXrtzyMoCrwdLSjxXkfDv9GnLMl-JQUW-0zqpwv-WQ/exec"; // GASのWebアプリURLを入力
+        let recognition;
+        let isListening = false;
+
+        // 音声認識の初期設定
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false; // 1文ごとに区切る
+            recognition.interimResults = false;
+            recognition.lang = 'ja-JP';
+
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                addMessage(text, 'user');
+                sendToGemini(text);
+            };
+
+            recognition.onend = () => {
+                if (isListening) recognition.start(); // 自動で聞き取りを再開（ハンズフリー化）
+            };
+        }
+
+        function toggleSpeech() {
+            const btn = document.getElementById('voice-btn');
+            if (!isListening) {
+                recognition.start();
+                isListening = true;
+                btn.innerText = "🛑 音声入力中...（話してください）";
+                btn.style.background = "#ff4d4d";
+            } else {
+                recognition.stop();
+                isListening = false;
+                btn.innerText = "🎤 音声入力ON (待機中)";
+                btn.style.background = "#06C755";
+            }
+        }
+
+        function addMessage(text, sender) {
+            const box = document.getElementById('chat-box');
+            const div = document.createElement('div');
+            div.className = `msg ${sender}`;
+            div.innerText = text;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        async function sendToGemini(text) {
+            // GASへテキストを送信してGeminiの返答をもらう
+            const response = await fetch(GAS_URL, {
+                method: 'POST',
+                body: JSON.stringify({ message: text })
+            });
+            const data = await response.json();
+            addMessage(data.reply, 'ai');
+        }
+
+        function copyResult() {
+            // 最後の「まとめ」を想定してコピーする簡易処理
+            const messages = document.querySelectorAll('.ai');
+            const lastMessage = messages[messages.length - 1].innerText;
+            navigator.clipboard.writeText(lastMessage);
+            alert("まとめをコピーしました！");
+        }
+
+        // LIFFの初期化
+        liff.init({ liffId: "YOUR_LIFF_ID" });
+    </script>
+</body>
+</html>
